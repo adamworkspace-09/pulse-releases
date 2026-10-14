@@ -14,17 +14,30 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: drop
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: main
       - name: Reassemble and publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          V=$(sed -n 's/^version: //p' latest.yml)
-          cat Pulse-Setup-$V.exe.part* > Pulse-Setup-$V.exe
-          echo "$(sed -n 's/^sha512: //p' latest.yml | head -1)" > want
-          openssl dgst -sha512 -binary Pulse-Setup-$V.exe | base64 -w0 > got
-          diff <(tr -d '\n' < want) got
-          cp Pulse-Setup-$V.exe Pulse-Setup.exe
-          gh release create "v$V" --repo "$GITHUB_REPOSITORY" --target main --title "Pulse $V" --latest \
-            --notes "Télécharge **Pulse-Setup.exe** et lance-le. Pulse se met ensuite à jour tout seul." \
-            latest.yml Pulse-Setup-$V.exe Pulse-Setup-$V.exe.blockmap Pulse-Setup.exe
+          set -e
+          for p in *.part00; do [ -e "$p" ] || continue; f="${p%.part00}"; cat "$f".part* > "$f"; rm "$f".part*; done
+          if [ "$(cat KIND 2>/dev/null)" = android ]; then
+            test "$(sha256sum Pulse.apk | cut -d' ' -f1)" = "$(python3 -c 'import json;print(json.load(open("android.json"))["sha256"])')"
+            gh release delete android --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+            gh release create android --repo "$GITHUB_REPOSITORY" --target main --latest=false \
+              --title "Pulse Android $(python3 -c 'import json;print(json.load(open("android.json"))["versionName"])')" \
+              --notes "Installe **Pulse.apk** sur ton téléphone. L'app se met ensuite à jour toute seule." \
+              Pulse.apk android.json
+          else
+            V=$(sed -n 's/^version: //p' latest.yml)
+            diff <(sed -n 's/^sha512: //p' latest.yml | head -1 | tr -d '\n') <(openssl dgst -sha512 -binary Pulse-Setup-$V.exe | base64 -w0)
+            cp Pulse-Setup-$V.exe Pulse-Setup.exe
+            extra=""; [ -f app.asar ] && extra="app.asar app.json"
+            gh release create "v$V" --repo "$GITHUB_REPOSITORY" --target main --title "Pulse $V" --latest \
+              --notes "Nouvelle installation : **Pulse-Setup.exe**. Déjà installé : Pulse se met à jour tout seul (≈5 Mo), ou lance **Pulse-Update.cmd**." \
+              latest.yml Pulse-Setup-$V.exe Pulse-Setup-$V.exe.blockmap Pulse-Setup.exe main/Pulse-Update.cmd $extra
+          fi
           git push origin --delete drop

@@ -31,11 +31,15 @@ jobs:
               --title "Pulse Android $(python3 -c 'import json;print(json.load(open("android.json"))["versionName"])')" \
               --notes "Installe **Pulse.apk** sur ton téléphone. L'app se met ensuite à jour toute seule." \
               Pulse.apk android.json
+            # l'APK apparaît aussi dans la dernière release (celle qu'on voit en premier)
+            L=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)
+            gh release upload "$L" Pulse.apk --repo "$GITHUB_REPOSITORY" --clobber
           else
+            gh release download android --repo "$GITHUB_REPOSITORY" -p Pulse.apk || true
             V=$(sed -n 's/^version: //p' latest.yml)
             diff <(sed -n 's/^sha512: //p' latest.yml | head -1 | tr -d '\n') <(openssl dgst -sha512 -binary Pulse-Setup-$V.exe | base64 -w0)
             cp Pulse-Setup-$V.exe Pulse-Setup.exe
-            extra=""; [ -f app.asar ] && extra="app.asar app.json"
+            extra=""; [ -f app.asar ] && extra="app.asar app.json"; [ -f Pulse.apk ] && extra="$extra Pulse.apk"
             gh release create "v$V" --repo "$GITHUB_REPOSITORY" --target main --title "Pulse $V" --latest \
               --notes "Nouvelle installation : **Pulse-Setup.exe**. Déjà installé : Pulse se met à jour tout seul (≈5 Mo), ou lance **Pulse-Update.cmd**." \
               latest.yml Pulse-Setup-$V.exe Pulse-Setup-$V.exe.blockmap Pulse-Setup.exe main/Pulse-Update.cmd $extra

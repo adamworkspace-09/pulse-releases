@@ -1,0 +1,30 @@
+name: Publish release
+
+on:
+  push:
+    branches: [drop]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: drop
+      - name: Reassemble and publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          V=$(sed -n 's/^version: //p' latest.yml)
+          cat Pulse-Setup-$V.exe.part* > Pulse-Setup-$V.exe
+          echo "$(sed -n 's/^sha512: //p' latest.yml | head -1)" > want
+          openssl dgst -sha512 -binary Pulse-Setup-$V.exe | base64 -w0 > got
+          diff <(tr -d '\n' < want) got
+          cp Pulse-Setup-$V.exe Pulse-Setup.exe
+          gh release create "v$V" --repo "$GITHUB_REPOSITORY" --target main --title "Pulse $V" --latest \
+            --notes "Télécharge **Pulse-Setup.exe** et lance-le. Pulse se met ensuite à jour tout seul." \
+            latest.yml Pulse-Setup-$V.exe Pulse-Setup-$V.exe.blockmap Pulse-Setup.exe
+          git push origin --delete drop
